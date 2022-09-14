@@ -1,3 +1,5 @@
-module github.com/Rusli4k/NoNameProject
+module nnm
 
 go 1.19
+
+require github.com/gorilla/mux v1.8.0
