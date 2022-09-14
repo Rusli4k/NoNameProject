@@ -196,7 +196,6 @@ func main() {
 		Password:      "qwerty",
 		CreatedAt:     time.Now(),
 		LastUpdatedAt: time.Now(),
-		//Deleted:       false,
 	})
 
 	users = append(users, User{
@@ -206,7 +205,6 @@ func main() {
 		Password:      "qwerty",
 		CreatedAt:     time.Now(),
 		LastUpdatedAt: time.Now(),
-		//Deleted:       false,
 	})
 
 	r := mux.NewRouter()
