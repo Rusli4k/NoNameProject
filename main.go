@@ -117,34 +117,34 @@ func createUser(w http.ResponseWriter, r *http.Request) {
 func updateUser(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
-		sendCustomErrorToHttp(w, http.StatusUnsupportedMediaType, convertErrToCustomError(err))
-		return
-	}
-
-	if err := user.newUserEmailValidator(); err != nil {
-		sendCustomErrorToHttp(w, http.StatusUnprocessableEntity, errInvalidEmail)
-		return
-	}
-
-	if err := user.newUserNameValidator(); err != nil {
-		sendCustomErrorToHttp(w, http.StatusUnprocessableEntity, errInvalidFullName)
-		return
-	}
-
-	if err := user.newUserPassValidator(); err != nil {
-		sendCustomErrorToHttp(w, http.StatusUnprocessableEntity, errInvalidPassword)
-		return
-	}
-
-	if err := compareEmail(users, user); err != nil {
-		sendCustomErrorToHttp(w, http.StatusConflict, errConflictEmail)
-		return
-	}
-
 	params := mux.Vars(r)
 	for i, v := range users {
 		if v.Id == params["id"] {
+			if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
+				sendCustomErrorToHttp(w, http.StatusUnsupportedMediaType, convertErrToCustomError(err))
+				return
+			}
+
+			if err := user.newUserEmailValidator(); err != nil {
+				sendCustomErrorToHttp(w, http.StatusUnprocessableEntity, errInvalidEmail)
+				return
+			}
+
+			if err := user.newUserNameValidator(); err != nil {
+				sendCustomErrorToHttp(w, http.StatusUnprocessableEntity, errInvalidFullName)
+				return
+			}
+
+			if err := user.newUserPassValidator(); err != nil {
+				sendCustomErrorToHttp(w, http.StatusUnprocessableEntity, errInvalidPassword)
+				return
+			}
+
+			if err := compareEmail(users, user); err != nil {
+				sendCustomErrorToHttp(w, http.StatusConflict, errConflictEmail)
+				return
+			}
+
 			users = append(users[:i], users[i+1:]...)
 			user.Id = params["id"]
 			user.CreatedAt = v.CreatedAt
