@@ -15,12 +15,18 @@ var user User
 var users []User
 var idCount int
 
+type customError struct {
+	MainText  interface{}
+	Details   interface{}
+	TimeStamp time.Time
+}
+
 var (
-	errInvalidEmail    = errors.New(`{"error":"incorrect email input","details":"email must have 5-256 chars and contain "@""}`)
-	errConflictEmail   = errors.New(`{"error":"incorrect email input","details":"email already exists - conflict detected"}`)
-	errInvalidPassword = errors.New(`{"error":"incorrect password input","details":"pass must have 8-256 chars and contain only ASCII"}`)
-	errInvalidFullName = errors.New(`{"error":"incorrect fullName input","details":"fullName must have more than 3 chars"}`)
-	errUsesNotExists   = errors.New(`{"error":"incorrect endpoint","details":"no user with such ID"}`)
+	errInvalidEmail    = customError{MainText: "incorrect email input", Details: "email must have 5-256 chars and contain @"}
+	errConflictEmail   = customError{MainText: "incorrect email input", Details: "email already exists - conflict detected"}
+	errInvalidPassword = customError{MainText: "incorrect password input", Details: "pass must have 8-256 chars and contain only ASCII"}
+	errInvalidFullName = customError{MainText: "incorrect fullName input", Details: "fullName must have more than 3 chars"}
+	errUsesNotExists   = customError{MainText: "incorrect endpoint", Details: "no user with such ID"}
 )
 
 type User struct {
@@ -30,6 +36,22 @@ type User struct {
 	Password      string    `json:"password"`
 	CreatedAt     time.Time `json:"created-at"`
 	LastUpdatedAt time.Time `json:"last-updated-at"`
+}
+
+func convertErrToCustomError(e error) (t customError) {
+	t.MainText = e
+	t.TimeStamp = time.Now()
+	return
+}
+
+func sendCustomErrorToHttp(w http.ResponseWriter, statusCode int, e customError) {
+	e.TimeStamp = time.Now()
+	jsErr, err := json.Marshal(e)
+	if err != nil {
+		log.Fatal(err)
+	}
+	w.WriteHeader(statusCode)
+	w.Write(jsErr)
 }
 
 func counter(i *int) string {
@@ -43,45 +65,54 @@ func getUsers(w http.ResponseWriter, r *http.Request) {
 }
 
 func getUser(w http.ResponseWriter, r *http.Request) {
-	params := mux.Vars(r)     // get variables from request
-	for _, v := range users { // iteration in DB
-		if v.Id == params["id"] { //looking for user by ID in DB
-			w.Header().Set("Content-Type", "application/json")   // if id exists, set header  and go out in line 55
-			if err := json.NewEncoder(w).Encode(v); err != nil { // encode result into response and check for errors
-				http.Error(w, err.Error(), http.StatusInternalServerError) //return error if something go wrong while encoding
-				return                                                     //break function
+	w.Header().Set("Content-Type", "application/json")
+	params := mux.Vars(r)
+	for _, v := range users {
+		if v.Id == params["id"] {
+			if err := json.NewEncoder(w).Encode(v); err != nil {
+				sendCustomErrorToHttp(w, http.StatusInternalServerError, convertErrToCustomError(err))
+				//http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
 			}
 			return
 		}
 	}
-	http.Error(w, errUsesNotExists.Error(), http.StatusNotFound)
+	sendCustomErrorToHttp(w, http.StatusNotFound, errUsesNotExists)
+	// w.WriteHeader(http.StatusNotFound)
+	// w.Write(errUsesNotExists)
+	//http.Error(w, errUsesNotExists.Error(), http.StatusNotFound)
 }
 
 func createUser(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
-		http.Error(w, err.Error(), http.StatusUnsupportedMediaType)
+		sendCustomErrorToHttp(w, http.StatusUnsupportedMediaType, convertErrToCustomError(err))
+		//http.Error(w, err.Error(), http.StatusUnsupportedMediaType)
 		return
 	}
 
 	if err := user.newUserEmailValidator(); err != nil {
-		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+		sendCustomErrorToHttp(w, http.StatusUnsupportedMediaType, errInvalidEmail)
+		//http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 		return
 	}
 
 	if err := user.newUserNameValidator(); err != nil {
-		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+		sendCustomErrorToHttp(w, http.StatusUnsupportedMediaType, errInvalidFullName)
+		//http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 		return
 	}
 
 	if err := user.newUserPassValidator(); err != nil {
-		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+		sendCustomErrorToHttp(w, http.StatusUnprocessableEntity, errInvalidPassword)
+		//http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 		return
 	}
 
 	if err := compareEmail(users, user); err != nil {
-		http.Error(w, err.Error(), http.StatusConflict)
+		sendCustomErrorToHttp(w, http.StatusConflict, errConflictEmail)
+		//http.Error(w, err.Error(), http.StatusConflict)
 		return
 	}
 
@@ -96,27 +127,32 @@ func updateUser(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
-		http.Error(w, err.Error(), http.StatusUnsupportedMediaType)
+		sendCustomErrorToHttp(w, http.StatusUnsupportedMediaType, convertErrToCustomError(err))
+		//http.Error(w, err.Error(), http.StatusUnsupportedMediaType)
 		return
 	}
 
 	if err := user.newUserEmailValidator(); err != nil {
-		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+		sendCustomErrorToHttp(w, http.StatusUnprocessableEntity, errInvalidEmail)
+		//		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 		return
 	}
 
 	if err := user.newUserNameValidator(); err != nil {
-		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+		sendCustomErrorToHttp(w, http.StatusUnprocessableEntity, errInvalidFullName)
+		//		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 		return
 	}
 
 	if err := user.newUserPassValidator(); err != nil {
-		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+		sendCustomErrorToHttp(w, http.StatusUnprocessableEntity, errInvalidPassword)
+		//		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 		return
 	}
 
 	if err := compareEmail(users, user); err != nil {
-		http.Error(w, err.Error(), http.StatusConflict)
+		sendCustomErrorToHttp(w, http.StatusConflict, errConflictEmail)
+		//		http.Error(w, err.Error(), http.StatusConflict)
 		return
 	}
 
@@ -132,7 +168,8 @@ func updateUser(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	http.Error(w, errUsesNotExists.Error(), http.StatusNotFound)
+	sendCustomErrorToHttp(w, http.StatusNotFound, errUsesNotExists)
+	//http.Error(w, errUsesNotExists.Error(), http.StatusNotFound)
 }
 
 func deleteUser(w http.ResponseWriter, r *http.Request) {
@@ -144,35 +181,36 @@ func deleteUser(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	http.Error(w, errUsesNotExists.Error(), http.StatusNotFound)
+	sendCustomErrorToHttp(w, http.StatusNotFound, errUsesNotExists)
+	//http.Error(w, errUsesNotExists.Error(), http.StatusNotFound)
 }
 
 func (u User) newUserNameValidator() error { // nil if ok
 	if len(u.FullName) < 3 {
-		return errInvalidFullName
+		return errors.New("errInvalidFullName")
 	}
 	return nil
 }
 
 func (u User) newUserEmailValidator() error { // nil if ok
 	if len(u.Email) < 5 || len(u.Email) > 256 {
-		return errInvalidEmail
+		return errors.New("errInvalidEmail")
 	}
 	for _, v := range u.Email {
 		if v == '@' {
 			return nil
 		}
 	}
-	return errInvalidEmail
+	return errors.New("errInvalidEmail")
 }
 
 func (u User) newUserPassValidator() error { // nil if ok
 	if len(u.Password) <= 7 || len(u.Password) > 256 {
-		return errInvalidPassword
+		return errors.New("errInvalidPassword")
 	} else {
 		for _, v := range u.Password {
 			if v < '!' || v > '~' {
-				return errInvalidPassword
+				return errors.New("errInvalidPassword")
 			}
 		}
 	}
@@ -182,7 +220,7 @@ func (u User) newUserPassValidator() error { // nil if ok
 func compareEmail(us []User, u User) error { // nil if ok
 	for _, v := range us {
 		if u.Email == v.Email {
-			return errConflictEmail
+			return errors.New("errConflictEmail")
 		}
 	}
 	return nil
