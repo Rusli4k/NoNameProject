@@ -16,17 +16,17 @@ var users []User
 var idCount int
 
 type customError struct {
-	MainText  interface{}
+	Error     interface{}
 	Details   interface{}
 	TimeStamp time.Time
 }
 
 var (
-	errInvalidEmail    = customError{MainText: "incorrect email input", Details: "email must have 5-256 chars and contain @"}
-	errConflictEmail   = customError{MainText: "incorrect email input", Details: "email already exists - conflict detected"}
-	errInvalidPassword = customError{MainText: "incorrect password input", Details: "pass must have 8-256 chars and contain only ASCII"}
-	errInvalidFullName = customError{MainText: "incorrect fullName input", Details: "fullName must have more than 3 chars"}
-	errUsesNotExists   = customError{MainText: "incorrect endpoint", Details: "no user with such ID"}
+	errInvalidEmail    = customError{Error: "incorrect email input", Details: "email must have 5-256 chars and contain @"}
+	errConflictEmail   = customError{Error: "incorrect email input", Details: "email already exists - conflict detected"}
+	errInvalidPassword = customError{Error: "incorrect password input", Details: "pass must have 8-256 chars and contain only ASCII"}
+	errInvalidFullName = customError{Error: "incorrect fullName input", Details: "fullName must have more than 3 chars"}
+	errUsesNotExists   = customError{Error: "incorrect endpoint", Details: "no user with such ID"}
 )
 
 type User struct {
@@ -39,7 +39,7 @@ type User struct {
 }
 
 func convertErrToCustomError(e error) (t customError) {
-	t.MainText = e
+	t.Error = e
 	t.TimeStamp = time.Now()
 	return
 }
@@ -71,16 +71,12 @@ func getUser(w http.ResponseWriter, r *http.Request) {
 		if v.Id == params["id"] {
 			if err := json.NewEncoder(w).Encode(v); err != nil {
 				sendCustomErrorToHttp(w, http.StatusInternalServerError, convertErrToCustomError(err))
-				//http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
 			return
 		}
 	}
 	sendCustomErrorToHttp(w, http.StatusNotFound, errUsesNotExists)
-	// w.WriteHeader(http.StatusNotFound)
-	// w.Write(errUsesNotExists)
-	//http.Error(w, errUsesNotExists.Error(), http.StatusNotFound)
 }
 
 func createUser(w http.ResponseWriter, r *http.Request) {
@@ -88,31 +84,26 @@ func createUser(w http.ResponseWriter, r *http.Request) {
 
 	if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
 		sendCustomErrorToHttp(w, http.StatusUnsupportedMediaType, convertErrToCustomError(err))
-		//http.Error(w, err.Error(), http.StatusUnsupportedMediaType)
 		return
 	}
 
 	if err := user.newUserEmailValidator(); err != nil {
 		sendCustomErrorToHttp(w, http.StatusUnsupportedMediaType, errInvalidEmail)
-		//http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 		return
 	}
 
 	if err := user.newUserNameValidator(); err != nil {
 		sendCustomErrorToHttp(w, http.StatusUnsupportedMediaType, errInvalidFullName)
-		//http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 		return
 	}
 
 	if err := user.newUserPassValidator(); err != nil {
 		sendCustomErrorToHttp(w, http.StatusUnprocessableEntity, errInvalidPassword)
-		//http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 		return
 	}
 
 	if err := compareEmail(users, user); err != nil {
 		sendCustomErrorToHttp(w, http.StatusConflict, errConflictEmail)
-		//http.Error(w, err.Error(), http.StatusConflict)
 		return
 	}
 
@@ -128,31 +119,26 @@ func updateUser(w http.ResponseWriter, r *http.Request) {
 
 	if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
 		sendCustomErrorToHttp(w, http.StatusUnsupportedMediaType, convertErrToCustomError(err))
-		//http.Error(w, err.Error(), http.StatusUnsupportedMediaType)
 		return
 	}
 
 	if err := user.newUserEmailValidator(); err != nil {
 		sendCustomErrorToHttp(w, http.StatusUnprocessableEntity, errInvalidEmail)
-		//		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 		return
 	}
 
 	if err := user.newUserNameValidator(); err != nil {
 		sendCustomErrorToHttp(w, http.StatusUnprocessableEntity, errInvalidFullName)
-		//		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 		return
 	}
 
 	if err := user.newUserPassValidator(); err != nil {
 		sendCustomErrorToHttp(w, http.StatusUnprocessableEntity, errInvalidPassword)
-		//		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 		return
 	}
 
 	if err := compareEmail(users, user); err != nil {
 		sendCustomErrorToHttp(w, http.StatusConflict, errConflictEmail)
-		//		http.Error(w, err.Error(), http.StatusConflict)
 		return
 	}
 
@@ -169,7 +155,6 @@ func updateUser(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	sendCustomErrorToHttp(w, http.StatusNotFound, errUsesNotExists)
-	//http.Error(w, errUsesNotExists.Error(), http.StatusNotFound)
 }
 
 func deleteUser(w http.ResponseWriter, r *http.Request) {
@@ -182,17 +167,16 @@ func deleteUser(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	sendCustomErrorToHttp(w, http.StatusNotFound, errUsesNotExists)
-	//http.Error(w, errUsesNotExists.Error(), http.StatusNotFound)
 }
 
-func (u User) newUserNameValidator() error { // nil if ok
+func (u User) newUserNameValidator() error {
 	if len(u.FullName) < 3 {
 		return errors.New("errInvalidFullName")
 	}
 	return nil
 }
 
-func (u User) newUserEmailValidator() error { // nil if ok
+func (u User) newUserEmailValidator() error {
 	if len(u.Email) < 5 || len(u.Email) > 256 {
 		return errors.New("errInvalidEmail")
 	}
@@ -204,7 +188,7 @@ func (u User) newUserEmailValidator() error { // nil if ok
 	return errors.New("errInvalidEmail")
 }
 
-func (u User) newUserPassValidator() error { // nil if ok
+func (u User) newUserPassValidator() error {
 	if len(u.Password) <= 7 || len(u.Password) > 256 {
 		return errors.New("errInvalidPassword")
 	} else {
@@ -217,7 +201,7 @@ func (u User) newUserPassValidator() error { // nil if ok
 	return nil
 }
 
-func compareEmail(us []User, u User) error { // nil if ok
+func compareEmail(us []User, u User) error {
 	for _, v := range us {
 		if u.Email == v.Email {
 			return errors.New("errConflictEmail")
