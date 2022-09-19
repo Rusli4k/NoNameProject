@@ -15,10 +15,7 @@ import (
 
 var user User
 var users []User
-
-//var idCount int
-
-//var db *sql.DB
+var clearUsers []User
 
 const connStr string = "user=postgres password=123 dbname=nnm sslmode=disable"
 
@@ -61,11 +58,6 @@ func sendCustomErrorToHttp(w http.ResponseWriter, statusCode int, e customError)
 	w.Write(jsErr)
 }
 
-// func counter(i *int) string {
-// 	*i++
-// 	return fmt.Sprint(*i)
-// }
-
 func getUsers(w http.ResponseWriter, r *http.Request) {
 	db, err := sql.Open("postgres", connStr)
 	if err != nil {
@@ -91,6 +83,7 @@ func getUsers(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(users)
+	users = clearUsers
 }
 
 func getUser(w http.ResponseWriter, r *http.Request) {
@@ -163,6 +156,7 @@ func createUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	json.NewEncoder(w).Encode(user)
+	users = clearUsers
 }
 
 func updateUser(w http.ResponseWriter, r *http.Request) {
@@ -222,7 +216,8 @@ func updateUser(w http.ResponseWriter, r *http.Request) {
 			user.CreatedAt = v.CreatedAt
 			user.LastUpdatedAt = time.Now().String()
 
-			_, err = db.Exec("UPDATE userz (email, fullname, password, createdat, lastupdatedat) VALUES ($2,$3,$4,$5,$6) WHERE id= $1", user.Id, user.Email, user.FullName, user.Password, user.CreatedAt, user.LastUpdatedAt)
+			_, err = db.Exec("UPDATE userz SET email = $2, fullname =$3, password =$4,	createdat =$5,lastupdatedat =$6 WHERE id= $1", user.Id, user.Email, user.FullName, user.Password, user.CreatedAt, user.LastUpdatedAt)
+
 			if err != nil {
 				sendCustomErrorToHttp(w, http.StatusInternalServerError, convertErrToCustomError(err))
 			}
@@ -232,6 +227,7 @@ func updateUser(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	sendCustomErrorToHttp(w, http.StatusNotFound, errUsesNotExists)
+	users = clearUsers
 }
 
 func deleteUser(w http.ResponseWriter, r *http.Request) {
@@ -261,7 +257,7 @@ func deleteUser(w http.ResponseWriter, r *http.Request) {
 	params := mux.Vars(r)
 	for _, v := range users {
 		if v.Id == params["id"] {
-			_, err = db.Exec("delete FROM physicians WHERE physician_id = $1", v.Id)
+			_, err = db.Exec("delete FROM userz WHERE id = $1", v.Id)
 			if err != nil {
 				sendCustomErrorToHttp(w, http.StatusInternalServerError, convertErrToCustomError(err))
 			}
@@ -269,6 +265,7 @@ func deleteUser(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	sendCustomErrorToHttp(w, http.StatusNotFound, errUsesNotExists)
+	users = clearUsers
 }
 
 func (u User) newUserNameValidator() error {
@@ -313,22 +310,6 @@ func compareEmail(us []User, u User) error {
 }
 
 func main() {
-
-	// db, err := sql.Open("postgres", connStr)
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
-	// defer db.Close()
-
-	// row := db.QueryRow("SELECT * FROM userz WHERE id=$1", 7)
-	// fmt.Println(row)
-	// err = row.Scan(&user.Id, &user.Email, &user.FullName, &user.Password, &user.CreatedAt, &user.LastUpdatedAt)
-	// if err != nil {
-	// 	fmt.Println(err)
-	// 	log.Fatal(err)
-	// }
-	// fmt.Println(err, user)
-
 	r := mux.NewRouter()
 	r.HandleFunc("/users", getUsers).Methods("GET")
 	r.HandleFunc("/users/", getUsers).Methods("GET")
@@ -338,47 +319,4 @@ func main() {
 	r.HandleFunc("/users/{id}", updateUser).Methods("PUT")
 	r.HandleFunc("/users/{id}", deleteUser).Methods("DELETE")
 	log.Fatal(http.ListenAndServe(":8080", r))
-
-	// users = append(users, User{
-	// 	Id:            counter(&idCount),
-	// 	Email:         "firstEmail@gmail.com",
-	// 	FullName:      "First Usr",
-	// 	Password:      "qwerty",
-	// 	CreatedAt:     time.Now(),
-	// 	LastUpdatedAt: time.Now(),
-	// })
-
-	// users = append(users, User{
-	// 	Id:            counter(&idCount),
-	// 	Email:         "secondEmail@gmail.com",
-	// 	FullName:      "Second Usr",
-	// 	Password:      "qwerty",
-	// 	CreatedAt:     time.Now(),
-	// 	LastUpdatedAt: time.Now(),
-	// })
-
-	// rows, err := db.Query("select * from userz")
-	// if err != nil {
-	// 	panic(err)
-	// }
-	// defer rows.Close()
-	// for rows.Next() {
-	// 	p := User{}
-	// 	err := rows.Scan(&p.Id, &p.Email, &p.FullName, &p.Password, &p.CreatedAt, &p.LastUpdatedAt)
-	// 	if err != nil {
-	// 		fmt.Println(err)
-	// 		continue
-	// 	}
-	// 	users = append(users, p)
-	// }
-
-	// for _, v := range users {
-	// 	fmt.Println(v.Id, v.Email, v.FullName, v.Password, v.CreatedAt, v.LastUpdatedAt)
-	// }
-
-	// res, err := db.Exec("INSERT into userz (id, email, fullname, password, createdat, lastupdatedat) values ($1,$2,$3,$4,$5,$6)", 2, "Secondmail@gmail.com", "Second Secondenco", "second123", time.Now().String(), time.Now().String())
-	// if err != nil {
-	// 	panic(err)
-	// }
-	// fmt.Println(res)
 }
