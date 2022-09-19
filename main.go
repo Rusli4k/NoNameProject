@@ -110,8 +110,32 @@ func getUser(w http.ResponseWriter, r *http.Request) {
 
 func createUser(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
+
+	db, err := sql.Open("postgres", connStr)
+	if err != nil {
+		panic(err)
+	}
+	defer db.Close()
+
+	rows, err := db.Query("SELECT * FROM userz")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer rows.Close()
+
 	var user User
 	var users []User
+
+	for rows.Next() {
+		u := User{}
+		err := rows.Scan(&u.Id, &u.Email, &u.FullName, &u.Password, &u.CreatedAt, &u.LastUpdatedAt)
+		if err != nil {
+			log.Fatal(err)
+			continue
+		}
+		users = append(users, u)
+	}
+
 	if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
 		sendCustomErrorToHttp(w, http.StatusUnsupportedMediaType, convertErrToCustomError(err))
 		return
@@ -136,11 +160,6 @@ func createUser(w http.ResponseWriter, r *http.Request) {
 		sendCustomErrorToHttp(w, http.StatusConflict, errConflictEmail)
 		return
 	}
-	db, err := sql.Open("postgres", connStr)
-	if err != nil {
-		panic(err)
-	}
-	defer db.Close()
 
 	var i int
 	row := db.QueryRow("SELECT MAX(id) FROM userz")
