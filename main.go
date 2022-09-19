@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,11 +10,17 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	_ "github.com/lib/pq"
 )
 
 var user User
 var users []User
-var idCount int
+
+//var idCount int
+
+//var db *sql.DB
+
+const connStr string = "user=postgres password=123 dbname=nnm sslmode=disable"
 
 type customError struct {
 	Error     interface{}
@@ -30,12 +37,12 @@ var (
 )
 
 type User struct {
-	Id            string    `json:"id"`
-	Email         string    `json:"email"`
-	FullName      string    `json:"full-name"`
-	Password      string    `json:"password"`
-	CreatedAt     time.Time `json:"created-at"`
-	LastUpdatedAt time.Time `json:"last-updated-at"`
+	Id            string `json:"id"`
+	Email         string `json:"email"`
+	FullName      string `json:"full-name"`
+	Password      string `json:"password"`
+	CreatedAt     string `json:"created-at"`
+	LastUpdatedAt string `json:"last-updated-at"`
 }
 
 func convertErrToCustomError(e error) (t customError) {
@@ -54,29 +61,59 @@ func sendCustomErrorToHttp(w http.ResponseWriter, statusCode int, e customError)
 	w.Write(jsErr)
 }
 
-func counter(i *int) string {
-	*i++
-	return fmt.Sprint(*i)
-}
+// func counter(i *int) string {
+// 	*i++
+// 	return fmt.Sprint(*i)
+// }
 
 func getUsers(w http.ResponseWriter, r *http.Request) {
+	db, err := sql.Open("postgres", connStr)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer db.Close()
+
+	rows, err := db.Query("select * from userz")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		u := User{}
+		err := rows.Scan(&u.Id, &u.Email, &u.FullName, &u.Password, &u.CreatedAt, &u.LastUpdatedAt)
+		if err != nil {
+			log.Fatal(err)
+			continue
+		}
+		users = append(users, u)
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(users)
 }
 
 func getUser(w http.ResponseWriter, r *http.Request) {
+	db, err := sql.Open("postgres", connStr)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer db.Close()
+
 	w.Header().Set("Content-Type", "application/json")
 	params := mux.Vars(r)
-	for _, v := range users {
-		if v.Id == params["id"] {
-			if err := json.NewEncoder(w).Encode(v); err != nil {
-				sendCustomErrorToHttp(w, http.StatusInternalServerError, convertErrToCustomError(err))
-				return
-			}
-			return
-		}
+
+	row := db.QueryRow("SELECT * FROM userz WHERE id=$1", params["id"])
+	err = row.Scan(&user.Id, &user.Email, &user.FullName, &user.Password, &user.CreatedAt, &user.LastUpdatedAt)
+	if err != nil {
+		sendCustomErrorToHttp(w, http.StatusNotFound, errUsesNotExists)
+		sendCustomErrorToHttp(w, http.StatusNotFound, convertErrToCustomError(err))
+		return
 	}
-	sendCustomErrorToHttp(w, http.StatusNotFound, errUsesNotExists)
+	if err := json.NewEncoder(w).Encode(user); err != nil {
+		sendCustomErrorToHttp(w, http.StatusInternalServerError, convertErrToCustomError(err))
+		return
+	}
 }
 
 func createUser(w http.ResponseWriter, r *http.Request) {
@@ -106,19 +143,55 @@ func createUser(w http.ResponseWriter, r *http.Request) {
 		sendCustomErrorToHttp(w, http.StatusConflict, errConflictEmail)
 		return
 	}
+	db, err := sql.Open("postgres", connStr)
+	if err != nil {
+		panic(err)
+	}
+	defer db.Close()
 
-	user.Id = counter(&idCount)
-	user.CreatedAt = time.Now()
-	user.LastUpdatedAt = time.Now()
-	users = append(users, user)
+	var i int
+	row := db.QueryRow("SELECT MAX(id) FROM userz")
+	row.Scan(&i)
+
+	user.Id = fmt.Sprint(i + 1)
+	user.CreatedAt = time.Now().String()
+	user.LastUpdatedAt = time.Now().String()
+
+	_, err = db.Exec("INSERT INTO userz (id, email, fullname, password, createdat, lastupdatedat) VALUES ($1,$2,$3,$4,$5,$6)", user.Id, user.Email, user.FullName, user.Password, user.CreatedAt, user.LastUpdatedAt)
+	if err != nil {
+		sendCustomErrorToHttp(w, http.StatusInternalServerError, convertErrToCustomError(err))
+	}
+
 	json.NewEncoder(w).Encode(user)
 }
 
 func updateUser(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
+	db, err := sql.Open("postgres", connStr)
+	if err != nil {
+		panic(err)
+	}
+	defer db.Close()
 
+	rows, err := db.Query("SELECT * FROM userz")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		u := User{}
+		err := rows.Scan(&u.Id, &u.Email, &u.FullName, &u.Password, &u.CreatedAt, &u.LastUpdatedAt)
+		if err != nil {
+			log.Fatal(err)
+			continue
+		}
+		users = append(users, u)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
 	params := mux.Vars(r)
-	for i, v := range users {
+
+	for _, v := range users {
 		if v.Id == params["id"] {
 			if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
 				sendCustomErrorToHttp(w, http.StatusUnsupportedMediaType, convertErrToCustomError(err))
@@ -145,11 +218,15 @@ func updateUser(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 
-			users = append(users[:i], users[i+1:]...)
 			user.Id = params["id"]
 			user.CreatedAt = v.CreatedAt
-			user.LastUpdatedAt = time.Now()
-			users = append(users, user)
+			user.LastUpdatedAt = time.Now().String()
+
+			_, err = db.Exec("UPDATE userz (email, fullname, password, createdat, lastupdatedat) VALUES ($2,$3,$4,$5,$6) WHERE id= $1", user.Id, user.Email, user.FullName, user.Password, user.CreatedAt, user.LastUpdatedAt)
+			if err != nil {
+				sendCustomErrorToHttp(w, http.StatusInternalServerError, convertErrToCustomError(err))
+			}
+
 			json.NewEncoder(w).Encode(user)
 			return
 		}
@@ -158,11 +235,36 @@ func updateUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func deleteUser(w http.ResponseWriter, r *http.Request) {
+	db, err := sql.Open("postgres", connStr)
+	if err != nil {
+		panic(err)
+	}
+	defer db.Close()
+
+	rows, err := db.Query("SELECT * FROM userz")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		u := User{}
+		err := rows.Scan(&u.Id, &u.Email, &u.FullName, &u.Password, &u.CreatedAt, &u.LastUpdatedAt)
+		if err != nil {
+			log.Fatal(err)
+			continue
+		}
+		users = append(users, u)
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	params := mux.Vars(r)
-	for i, v := range users {
+	for _, v := range users {
 		if v.Id == params["id"] {
-			users = append(users[:i], users[i+1:]...)
+			_, err = db.Exec("delete FROM physicians WHERE physician_id = $1", v.Id)
+			if err != nil {
+				sendCustomErrorToHttp(w, http.StatusInternalServerError, convertErrToCustomError(err))
+			}
 			return
 		}
 	}
@@ -211,23 +313,21 @@ func compareEmail(us []User, u User) error {
 }
 
 func main() {
-	users = append(users, User{
-		Id:            counter(&idCount),
-		Email:         "firstEmail@gmail.com",
-		FullName:      "First Usr",
-		Password:      "qwerty",
-		CreatedAt:     time.Now(),
-		LastUpdatedAt: time.Now(),
-	})
 
-	users = append(users, User{
-		Id:            counter(&idCount),
-		Email:         "secondEmail@gmail.com",
-		FullName:      "Second Usr",
-		Password:      "qwerty",
-		CreatedAt:     time.Now(),
-		LastUpdatedAt: time.Now(),
-	})
+	// db, err := sql.Open("postgres", connStr)
+	// if err != nil {
+	// 	log.Fatal(err)
+	// }
+	// defer db.Close()
+
+	// row := db.QueryRow("SELECT * FROM userz WHERE id=$1", 7)
+	// fmt.Println(row)
+	// err = row.Scan(&user.Id, &user.Email, &user.FullName, &user.Password, &user.CreatedAt, &user.LastUpdatedAt)
+	// if err != nil {
+	// 	fmt.Println(err)
+	// 	log.Fatal(err)
+	// }
+	// fmt.Println(err, user)
 
 	r := mux.NewRouter()
 	r.HandleFunc("/users", getUsers).Methods("GET")
@@ -238,4 +338,47 @@ func main() {
 	r.HandleFunc("/users/{id}", updateUser).Methods("PUT")
 	r.HandleFunc("/users/{id}", deleteUser).Methods("DELETE")
 	log.Fatal(http.ListenAndServe(":8080", r))
+
+	// users = append(users, User{
+	// 	Id:            counter(&idCount),
+	// 	Email:         "firstEmail@gmail.com",
+	// 	FullName:      "First Usr",
+	// 	Password:      "qwerty",
+	// 	CreatedAt:     time.Now(),
+	// 	LastUpdatedAt: time.Now(),
+	// })
+
+	// users = append(users, User{
+	// 	Id:            counter(&idCount),
+	// 	Email:         "secondEmail@gmail.com",
+	// 	FullName:      "Second Usr",
+	// 	Password:      "qwerty",
+	// 	CreatedAt:     time.Now(),
+	// 	LastUpdatedAt: time.Now(),
+	// })
+
+	// rows, err := db.Query("select * from userz")
+	// if err != nil {
+	// 	panic(err)
+	// }
+	// defer rows.Close()
+	// for rows.Next() {
+	// 	p := User{}
+	// 	err := rows.Scan(&p.Id, &p.Email, &p.FullName, &p.Password, &p.CreatedAt, &p.LastUpdatedAt)
+	// 	if err != nil {
+	// 		fmt.Println(err)
+	// 		continue
+	// 	}
+	// 	users = append(users, p)
+	// }
+
+	// for _, v := range users {
+	// 	fmt.Println(v.Id, v.Email, v.FullName, v.Password, v.CreatedAt, v.LastUpdatedAt)
+	// }
+
+	// res, err := db.Exec("INSERT into userz (id, email, fullname, password, createdat, lastupdatedat) values ($1,$2,$3,$4,$5,$6)", 2, "Secondmail@gmail.com", "Second Secondenco", "second123", time.Now().String(), time.Now().String())
+	// if err != nil {
+	// 	panic(err)
+	// }
+	// fmt.Println(res)
 }
