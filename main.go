@@ -13,9 +13,6 @@ import (
 	_ "github.com/lib/pq"
 )
 
-var user User
-var users []User
-
 const connStr string = "user=postgres password=123 dbname=nnm sslmode=disable"
 
 type customError struct {
