@@ -61,7 +61,7 @@ func getUsers(w http.ResponseWriter, r *http.Request) {
 	}
 	defer db.Close()
 
-	rows, err := db.Query("select * from userz")
+	rows, err := db.Query("select * FROM userz ORDER BY id")
 	if err != nil {
 		log.Fatal(err)
 	}
