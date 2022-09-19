@@ -15,7 +15,6 @@ import (
 
 var user User
 var users []User
-var clearUsers []User
 
 const connStr string = "user=postgres password=123 dbname=nnm sslmode=disable"
 
@@ -71,6 +70,8 @@ func getUsers(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 
+	var users []User
+
 	for rows.Next() {
 		u := User{}
 		err := rows.Scan(&u.Id, &u.Email, &u.FullName, &u.Password, &u.CreatedAt, &u.LastUpdatedAt)
@@ -83,7 +84,6 @@ func getUsers(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(users)
-	users = clearUsers
 }
 
 func getUser(w http.ResponseWriter, r *http.Request) {
@@ -95,6 +95,8 @@ func getUser(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	params := mux.Vars(r)
+
+	var user User
 
 	row := db.QueryRow("SELECT * FROM userz WHERE id=$1", params["id"])
 	err = row.Scan(&user.Id, &user.Email, &user.FullName, &user.Password, &user.CreatedAt, &user.LastUpdatedAt)
@@ -111,7 +113,8 @@ func getUser(w http.ResponseWriter, r *http.Request) {
 
 func createUser(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-
+	var user User
+	var users []User
 	if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
 		sendCustomErrorToHttp(w, http.StatusUnsupportedMediaType, convertErrToCustomError(err))
 		return
@@ -156,7 +159,6 @@ func createUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	json.NewEncoder(w).Encode(user)
-	users = clearUsers
 }
 
 func updateUser(w http.ResponseWriter, r *http.Request) {
@@ -171,6 +173,9 @@ func updateUser(w http.ResponseWriter, r *http.Request) {
 		log.Fatal(err)
 	}
 	defer rows.Close()
+
+	var user User
+	var users []User
 
 	for rows.Next() {
 		u := User{}
@@ -227,7 +232,6 @@ func updateUser(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	sendCustomErrorToHttp(w, http.StatusNotFound, errUsesNotExists)
-	users = clearUsers
 }
 
 func deleteUser(w http.ResponseWriter, r *http.Request) {
@@ -242,6 +246,8 @@ func deleteUser(w http.ResponseWriter, r *http.Request) {
 		log.Fatal(err)
 	}
 	defer rows.Close()
+
+	var users []User
 
 	for rows.Next() {
 		u := User{}
@@ -265,7 +271,6 @@ func deleteUser(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	sendCustomErrorToHttp(w, http.StatusNotFound, errUsesNotExists)
-	users = clearUsers
 }
 
 func (u User) newUserNameValidator() error {
